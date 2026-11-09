@@ -5,6 +5,8 @@ import {
   AlertCircle,
   Clock,
   Sparkles,
+  Sun,
+  Moon,
 } from 'lucide-react'
 import {
   DEFAULT_CITIES,
@@ -18,13 +20,46 @@ import HourlyChart from './components/HourlyChart'
 import WeeklyForecast from './components/WeeklyForecast'
 import './App.css'
 
+// 기상 상태 코드 및 주야간 기반 동적 테마 클래스 산출
+function getWeatherThemeClass(current) {
+  if (!current) return 'weather-theme-clear-day'
+
+  const code = current.weather_code
+  const isDay = current.is_day !== 0 // 1: 낮, 0: 밤
+
+  // 뇌우
+  if (code === 95) return 'weather-theme-thunder'
+  // 눈 / 싸락눈
+  if ([71, 73, 75, 77].includes(code)) return 'weather-theme-snow'
+  // 비 / 소나기 / 이슬비
+  if ([51, 53, 55, 61, 63, 65, 80, 81, 82].includes(code)) return 'weather-theme-rain'
+  // 안개
+  if ([45, 48].includes(code)) return 'weather-theme-fog'
+  // 구름 조금 / 흐림
+  if ([2, 3].includes(code)) return isDay ? 'weather-theme-clouds-day' : 'weather-theme-clouds-night'
+  // 맑음 / 대체로 맑음 (0, 1)
+  return isDay ? 'weather-theme-clear-day' : 'weather-theme-clear-night'
+}
+
 export default function App() {
+  // 테마 모드: 기본값 라이트(light), localStorage 보존
+  const [themeMode, setThemeMode] = useState(() => {
+    return localStorage.getItem('weather_theme_mode') || 'light'
+  })
+
   const [selectedCity, setSelectedCity] = useState(DEFAULT_CITIES[0])
   const [weatherData, setWeatherData] = useState(null)
   const [airQualityData, setAirQualityData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [lastUpdated, setLastUpdated] = useState(null)
+
+  // 테마 모드 전환 토글
+  const toggleThemeMode = () => {
+    const nextMode = themeMode === 'light' ? 'dark' : 'light'
+    setThemeMode(nextMode)
+    localStorage.setItem('weather_theme_mode', nextMode)
+  }
 
   // 특정 도시 데이터 수동 갱신 (새로고침 버튼용)
   const loadCityData = useCallback(async (city) => {
@@ -97,118 +132,145 @@ export default function App() {
     }
   }, [selectedCity])
 
+  // 현재 날씨 기반 동적 테마 클래스명
+  const weatherThemeClass = getWeatherThemeClass(weatherData?.current)
+
   return (
-    <div className="dashboard-container">
-      {/* 대시보드 헤더 */}
-      <header className="dashboard-header">
-        <div className="header-badge">
-          <Sparkles size={14} /> Open-Meteo 실시간 연동
-        </div>
-        <h1 className="header-title">실시간 날씨 &amp; 미세먼지 대시보드</h1>
-        <p className="header-desc">
-          전 세계 기상 관측 네트워크 API를 활용해 대한민국의 실시간 기상 상태를 안내합니다.
-        </p>
-      </header>
-
-      {/* 도시 검색창 (400ms 디바운스 + 드롭다운) */}
-      <section className="search-section">
-        <CitySearch onSelectCity={(city) => setSelectedCity(city)} />
-      </section>
-
-      {/* 주요 도시 빠른 선택 버튼 바 */}
-      <section className="city-selector-section">
-        <div className="city-chips">
-          {DEFAULT_CITIES.map((city) => {
-            const isSelected = selectedCity.name === city.name
-            return (
-              <button
-                key={city.name}
-                type="button"
-                className={`city-chip ${isSelected ? 'active' : ''}`}
-                onClick={() => setSelectedCity(city)}
-              >
-                <MapPin size={15} />
-                <span>{city.name}</span>
-              </button>
-            )
-          })}
-        </div>
-      </section>
-
-      {/* 상태 툴바 (위치, 업데이트 시각, 새로고침) */}
-      <div className="status-toolbar">
-        <div className="current-location-text">
-          선택된 위치: <strong>{selectedCity.name}</strong>
-          {lastUpdated && (
-            <span className="last-update">
-              <Clock size={13} /> {lastUpdated} 갱신
-            </span>
-          )}
-        </div>
-        <button
-          type="button"
-          className="refresh-btn"
-          onClick={() => loadCityData(selectedCity)}
-          disabled={loading}
-          title="데이터 새로고침"
-        >
-          <RefreshCw size={15} className={loading ? 'spin' : ''} />
-          <span>새로고침</span>
-        </button>
-      </div>
-
-      {/* 본문 콘텐츠 영역 */}
-      <main className="content-area">
-        {loading && (
-          <div className="state-card loading-card">
-            <RefreshCw size={36} className="spin accent-icon" />
-            <h3>기상 데이터를 불러오는 중...</h3>
-            <p>{selectedCity.name}의 최신 기온 및 대기질 정보를 가져오고 있습니다.</p>
+    <div className={`dashboard-wrapper ${weatherThemeClass}`} data-theme={themeMode}>
+      <div className="dashboard-container">
+        {/* 상단 툴바: 테마 토글 버튼 & 실시간 배지 */}
+        <div className="top-nav-bar">
+          <div className="header-badge">
+            <Sparkles size={14} /> Open-Meteo 실시간 연동
           </div>
-        )}
+          <button
+            type="button"
+            className="theme-mode-toggle-btn"
+            onClick={toggleThemeMode}
+            title={themeMode === 'light' ? '다크 모드로 전환' : '라이트 모드로 전환'}
+          >
+            {themeMode === 'light' ? (
+              <>
+                <Moon size={16} />
+                <span>다크 모드</span>
+              </>
+            ) : (
+              <>
+                <Sun size={16} />
+                <span>라이트 모드</span>
+              </>
+            )}
+          </button>
+        </div>
 
-        {!loading && error && (
-          <div className="state-card error-card">
-            <AlertCircle size={40} className="error-icon" />
-            <h3>데이터를 불러오지 못했습니다</h3>
-            <p className="error-text">{error}</p>
-            <button
-              type="button"
-              className="retry-btn"
-              onClick={() => loadCityData(selectedCity)}
-            >
-              다시 시도
-            </button>
+        {/* 대시보드 헤더 */}
+        <header className="dashboard-header">
+          <h1 className="header-title">실시간 날씨 &amp; 미세먼지 대시보드</h1>
+          <p className="header-desc">
+            현재 기상 상태에 따라 배경 테마가 자동으로 변화하며, 전 세계 실시간 기상 데이터를 안내합니다.
+          </p>
+        </header>
+
+        {/* 도시 검색창 (400ms 디바운스 + 드롭다운) */}
+        <section className="search-section">
+          <CitySearch onSelectCity={(city) => setSelectedCity(city)} />
+        </section>
+
+        {/* 주요 도시 빠른 선택 버튼 바 */}
+        <section className="city-selector-section">
+          <div className="city-chips">
+            {DEFAULT_CITIES.map((city) => {
+              const isSelected = selectedCity.name === city.name
+              return (
+                <button
+                  key={city.name}
+                  type="button"
+                  className={`city-chip ${isSelected ? 'active' : ''}`}
+                  onClick={() => setSelectedCity(city)}
+                >
+                  <MapPin size={15} />
+                  <span>{city.name}</span>
+                </button>
+              )
+            })}
           </div>
-        )}
+        </section>
 
-        {!loading && !error && weatherData && (
-          <div className="dashboard-grid">
-            {/* 1행: 현재 날씨 + 미세먼지 카드 (2열 그리드) */}
-            <div className="primary-cards-grid">
-              <CurrentWeather city={selectedCity} currentWeather={weatherData.current} />
-              <AirQualityCard city={selectedCity} airQuality={airQualityData} />
+        {/* 상태 툴바 (위치, 업데이트 시각, 새로고침) */}
+        <div className="status-toolbar">
+          <div className="current-location-text">
+            선택된 위치: <strong>{selectedCity.name}</strong>
+            {lastUpdated && (
+              <span className="last-update">
+                <Clock size={13} /> {lastUpdated} 갱신
+              </span>
+            )}
+          </div>
+          <button
+            type="button"
+            className="refresh-btn"
+            onClick={() => loadCityData(selectedCity)}
+            disabled={loading}
+            title="데이터 새로고침"
+          >
+            <RefreshCw size={15} className={loading ? 'spin' : ''} />
+            <span>새로고침</span>
+          </button>
+        </div>
+
+        {/* 본문 콘텐츠 영역 */}
+        <main className="content-area">
+          {loading && (
+            <div className="state-card loading-card">
+              <RefreshCw size={36} className="spin accent-icon" />
+              <h3>기상 데이터를 불러오는 중...</h3>
+              <p>{selectedCity.name}의 최신 기온 및 대기질 정보를 가져오고 있습니다.</p>
             </div>
+          )}
 
-            {/* 2행: 24시간 시간대별 기온 SVG 차트 */}
-            <HourlyChart hourly={weatherData.hourly} />
+          {!loading && error && (
+            <div className="state-card error-card">
+              <AlertCircle size={40} className="error-icon" />
+              <h3>데이터를 불러오지 못했습니다</h3>
+              <p className="error-text">{error}</p>
+              <button
+                type="button"
+                className="retry-btn"
+                onClick={() => loadCityData(selectedCity)}
+              >
+                다시 시도
+              </button>
+            </div>
+          )}
 
-            {/* 3행: 7일간 주간 날씨 예보 */}
-            <WeeklyForecast daily={weatherData.daily} />
-          </div>
-        )}
-      </main>
+          {!loading && !error && weatherData && (
+            <div className="dashboard-grid">
+              {/* 1행: 현재 날씨 + 미세먼지 카드 (2열 그리드) */}
+              <div className="primary-cards-grid">
+                <CurrentWeather city={selectedCity} currentWeather={weatherData.current} />
+                <AirQualityCard city={selectedCity} airQuality={airQualityData} />
+              </div>
 
-      {/* 푸터 */}
-      <footer className="dashboard-footer">
-        <p>
-          실시간 데이터 출처:{' '}
-          <a href="https://open-meteo.com/" target="_blank" rel="noreferrer">
-            Open-Meteo
-          </a>{' '}
-          Public Weather &amp; Air Quality API
-        </p>
-      </footer>
+              {/* 2행: 24시간 시간대별 기온 SVG 차트 */}
+              <HourlyChart hourly={weatherData.hourly} />
+
+              {/* 3행: 7일간 주간 날씨 예보 */}
+              <WeeklyForecast daily={weatherData.daily} />
+            </div>
+          )}
+        </main>
+
+        {/* 푸터 */}
+        <footer className="dashboard-footer">
+          <p>
+            실시간 데이터 출처:{' '}
+            <a href="https://open-meteo.com/" target="_blank" rel="noreferrer">
+              Open-Meteo
+            </a>{' '}
+            Public Weather &amp; Air Quality API
+          </p>
+        </footer>
+      </div>
     </div>
   )
 }
